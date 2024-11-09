@@ -103,6 +103,50 @@ def get_all_trades():
         trades = cursor.fetchall()
     return trades
 
+
+
+#Simulation
+def simulate_strategy(stop_loss, target, trades):
+    """
+    Simulates the performance of a trading strategy given stop loss and target levels.
+    Only trades with an entry price of 0 are considered valid.
+    Raises an error if any trade entry is not 0.
+    """
+    # Check if all trades have an entry price of 0
+    for trade in trades:
+        if trade['entry'] != 0:
+            raise ValueError("All trades must have an entry price of 0.")
+
+    profits = []
+
+    # Iterate over valid trades
+    for trade in trades:
+        entry = trade['entry']
+        exit_value = trade['exit']
+        most_adverse = trade['most_adverse']
+        unrealized_profit = trade['unrealized_profit']
+
+        # Calculate potential stop loss hit
+        if most_adverse <= entry + stop_loss:
+            profit = stop_loss  # Stop loss hit
+        # Check if the unrealized profit meets or exceeds the target
+        elif unrealized_profit >= entry + target:
+            profit = target  # Target hit
+        else:
+            profit = stop_loss  # If neither stop loss nor target hit, assume stop loss is the loss
+
+        profits.append(profit)
+
+    return np.array(profits)
+
+
+
+
+
+
+
+
+
 def delete_trade_from_db(trade_id):
     """Löscht einen Trade aus der Datenbank."""
     with get_db() as conn:
