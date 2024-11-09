@@ -21,7 +21,8 @@ def init_db():
             exit INTEGER NOT NULL,
             stop_loss INTEGER NOT NULL,
             most_adverse INTEGER NOT NULL,
-            unrealized_profit INTEGER NOT NULL
+            unrealized_profit INTEGER NOT NULL,
+            market TEXT NOT NULL
         )''')
     print("Database initialized.")
 
@@ -37,6 +38,14 @@ def trade_entry():
         most_adverse = request.form.get('most_adverse')
         unrealized_profit = request.form.get('unrealized_profit')
 
+        market = request.form.get('market')  # Neues Feld für den Markt
+
+        # Optional: Validierung für das Feld "market"
+        if not market:
+            flash("Market is required.")
+            return redirect(url_for('trade_entry'))
+
+
         # Validate inputs
         if not validate_trade_entry(exit_value, stop_loss, most_adverse, unrealized_profit) or not name:
             flash("Invalid input values! Please ensure all fields are filled out correctly.")
@@ -49,7 +58,8 @@ def trade_entry():
             'exit': exit_value,
             'stop_loss': stop_loss,
             'most_adverse': most_adverse,
-            'unrealized_profit': unrealized_profit
+            'unrealized_profit': unrealized_profit,
+            'market': market,
         })
 
         flash("Trade entry recorded successfully!")
@@ -58,13 +68,18 @@ def trade_entry():
     trades = get_all_trades()
     return render_template('index.html', trades=trades)
 
+
 def save_trade_to_db(trade_data):
     """Save a trade entry to the SQLite database."""
     with get_db() as conn:
-        conn.execute('''INSERT INTO trades (name, entry, exit, stop_loss, most_adverse, unrealized_profit)
-                        VALUES (?, ?, ?, ?, ?, ?)''',
+        conn.execute('''INSERT INTO trades (name, entry, exit, stop_loss, most_adverse, unrealized_profit, market)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
                      (trade_data['name'], trade_data['entry'], trade_data['exit'],
-                      trade_data['stop_loss'], trade_data['most_adverse'], trade_data['unrealized_profit'])) #trade_data daten werden in trade_entry funktion erstellt
+                      trade_data['stop_loss'], trade_data['most_adverse'], trade_data['unrealized_profit'],
+                      trade_data['market']))
+
+
+#trade_data daten werden in trade_entry funktion erstellt
 
 def validate_trade_entry(exit_value, stop_loss, most_adverse, unrealized_profit):
     try:
@@ -87,6 +102,23 @@ def get_all_trades():
         cursor = conn.execute('SELECT * FROM trades')
         trades = cursor.fetchall()
     return trades
+
+def delete_trade_from_db(trade_id):
+    """Löscht einen Trade aus der Datenbank."""
+    with get_db() as conn:
+        conn.execute('DELETE FROM trades WHERE id = ?', (trade_id,))
+    print(f"Trade mit ID {trade_id} gelöscht.")
+
+@app.route('/delete_trade/<int:trade_id>', methods=['POST'])
+def delete_trade(trade_id):
+        """Löscht einen Trade aus der Datenbank und leitet zurück zur Hauptseite."""
+        delete_trade_from_db(trade_id)
+        flash("Trade wurde erfolgreich gelöscht!")
+        return redirect(url_for('index'))
+
+
+
+
 
 @app.route('/')
 def index():
