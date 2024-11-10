@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, flash, redirect, url_for
 import sqlite3
+import numpy as np
+
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Set a secret key for session management
@@ -26,7 +28,27 @@ def init_db():
         )''')
     print("Database initialized.")
 
+def create_strategy_performance_table():
+    """Create a table for storing strategy performance results."""
+    with get_db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS strategy_performance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stop_loss INTEGER,
+                target INTEGER,
+                total_profit REAL,
+                winrate REAL,
+                profit_factor REAL
+            )
+        ''')
+    print("strategy_performance table is ready or already exists.")
+
+
+
+
 init_db()
+create_strategy_performance_table()
+
 
 @app.route('/trade_entry', methods=['GET', 'POST'])
 def trade_entry():
@@ -104,8 +126,6 @@ def get_all_trades():
     return trades
 
 
-
-#Simulation
 def simulate_strategy(stop_loss, target, trades):
     """
     Simulates the performance of a trading strategy given stop loss and target levels.
@@ -113,9 +133,12 @@ def simulate_strategy(stop_loss, target, trades):
     Raises an error if any trade entry is not 0.
     """
     # Check if all trades have an entry price of 0
+    print("Starting strategy simulation...")
     for trade in trades:
         if trade['entry'] != 0:
             raise ValueError("All trades must have an entry price of 0.")
+        print(
+            f"Evaluating trade: {trade['entry']}, {trade['exit']}, {trade['stop_loss']}, {trade['most_adverse']}, {trade['unrealized_profit']}")
 
     profits = []
 
@@ -123,26 +146,75 @@ def simulate_strategy(stop_loss, target, trades):
     for trade in trades:
         entry = trade['entry']
         exit_value = trade['exit']
+        stop_loss_value = trade['stop_loss']  # Access the correct stop_loss from the database
         most_adverse = trade['most_adverse']
         unrealized_profit = trade['unrealized_profit']
+
+        print(
+            f"Simulating trade: Entry: {entry}, Exit: {exit_value}, Stop Loss: {stop_loss_value}, Most Adverse: {most_adverse}, Unrealized Profit: {unrealized_profit}")
 
         # Calculate potential stop loss hit
         if most_adverse <= entry + stop_loss:
             profit = stop_loss  # Stop loss hit
+            print(f"Stop loss hit. Profit: {profit}")
         # Check if the unrealized profit meets or exceeds the target
         elif unrealized_profit >= entry + target:
             profit = target  # Target hit
+            print(f"Target hit. Profit: {profit}")
         else:
             profit = stop_loss  # If neither stop loss nor target hit, assume stop loss is the loss
+            print(f"No target or stop loss hit. Profit: {profit}")
 
         profits.append(profit)
 
+    print(f"Completed strategy simulation for stop loss: {stop_loss}, target: {target}")
     return np.array(profits)
 
 
+def analyze_strategies(trades):
+    """
+    Analyze various stop loss and target combinations to suggest improvements.
+    Returns the best strategy and performance results including P&L curves.
+    """
+    stop_loss_values = [-6, -8, -12]  # Example negative stop loss values
+    target_values = [10, 16, 20]  # Example target values
 
+    best_strategy = None
+    best_performance = -np.inf
+    performance_results = []
+    pnl_curves = {}
 
+    for stop_loss in stop_loss_values:
+        for target in target_values:
+            profits = simulate_strategy(stop_loss, target, trades)
+            total_profit = profits.sum()
+            winrate = (profits > 0).mean() * 100
+            profit_factor = (profits[profits > 0].sum() / abs(profits[profits < 0].sum())) if (profits < 0).sum() > 0 else float('inf')
 
+            # Calculate cumulative P&L curve
+            cumulative_pnl = np.cumsum(profits)
+            pnl_curves[(stop_loss, target)] = cumulative_pnl
+
+            performance_results.append({
+                'Stop Loss': stop_loss,
+                'Target': target,
+                'Total Profit': total_profit,
+                'Winrate': winrate,
+                'Profit Factor': profit_factor
+            })
+
+            # Check if this strategy is better
+            if total_profit > best_performance:
+                best_performance = total_profit
+                best_strategy = {
+                    'Stop Loss': stop_loss,
+                    'Target': target,
+                    'Total Profit': total_profit,
+                    'Winrate': winrate,
+                    'Profit Factor': profit_factor
+                }
+
+    return best_strategy, performance_results, pnl_curves
 
 
 
@@ -160,6 +232,43 @@ def delete_trade(trade_id):
         flash("Trade wurde erfolgreich gelöscht!")
         return redirect(url_for('index'))
 
+def save_strategy_performance_to_db(best_strategy, performance_results):
+    """Save the best strategy and all performance results to the SQLite database."""
+    with get_db() as conn:
+        # Save the best strategy
+        conn.execute('''INSERT INTO strategy_performance (stop_loss, target, total_profit, winrate, profit_factor)
+                        VALUES (?, ?, ?, ?, ?)''',
+                     (best_strategy['Stop Loss'], best_strategy['Target'], best_strategy['Total Profit'],
+                      best_strategy['Winrate'], best_strategy['Profit Factor']))
+
+        # Save each performance result
+        for result in performance_results:
+            conn.execute('''INSERT INTO strategy_performance (stop_loss, target, total_profit, winrate, profit_factor)
+                            VALUES (?, ?, ?, ?, ?)''',
+                         (result['Stop Loss'], result['Target'], result['Total Profit'],
+                          result['Winrate'], result['Profit Factor']))
+
+    print("Strategy performance saved to the database.")
+
+
+@app.route('/perform_action', methods=['POST'])
+def perform_action():
+    # Logic for the action (e.g., analyzing trades, running calculations, etc.)
+    # For example, you could call a function to analyze trade data:
+    trades = get_all_trades()  # Assuming you have a function to get all trades
+    best_strategy, performance_results, pnl_curves = analyze_strategies(trades)  # Your strategy analysis function
+
+    # Optionally, you can save the performance results or log them
+    save_strategy_performance_to_db(best_strategy, performance_results)  # Example of saving results
+
+    # Flash a message if you want to notify the user
+    flash('Action performed successfully!')
+
+    # After performing the action, you can render the results or redirect
+    return redirect(url_for('index'))  # Redirect to the index page to display updated data
+
+
+
 
 
 
@@ -167,7 +276,13 @@ def delete_trade(trade_id):
 @app.route('/')
 def index():
     trades = get_all_trades()  # Lädt alle Trades
-    return render_template('index.html', trades=trades)  # Übergibt die Daten an die Vorlage
+
+    best_strategy, performance_results, pnl_curves = analyze_strategies(trades)  # Analyze strategies
+    save_strategy_performance_to_db(best_strategy, performance_results)  # Save results to DB
+    print(f"Performance Results: {performance_results}")  # Log for debugging
+
+    return render_template('index.html', trades=trades, best_strategy=best_strategy,
+                           performance_results=performance_results)
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
