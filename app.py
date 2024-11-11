@@ -171,7 +171,7 @@ def simulate_strategy(stop_loss, target, trades):
     return np.array(profits)
 
 
-def analyze_strategies(trades):
+def analyze_strategies(trades, market=None):
     """
     Analyze various stop loss and target combinations to suggest improvements.
     Returns the best strategy and performance results including P&L curves.
@@ -183,6 +183,10 @@ def analyze_strategies(trades):
     best_performance = -np.inf
     performance_results = []
     pnl_curves = {}
+
+    if market:
+        trades = [trade for trade in trades if trade['market'] == market]
+
 
     for stop_loss in stop_loss_values:
         for target in target_values:
@@ -268,9 +272,17 @@ def perform_action():
     return redirect(url_for('index'))  # Redirect to the index page to display updated data
 
 
+@app.route('/select_market', methods=['POST'])
+def perform_action_selectmarket():
+    market = request.form.get('market')  # Get the selected market from the form
+    trades = get_all_trades()  # Fetch all trades
+    best_strategy, performance_results, pnl_curves = analyze_strategies(trades,
+                                                                        market)  # Analyze strategies based on the market
 
-
-
+    # Pass the market and results to the template
+    return render_template('index.html',
+                           performance_results=performance_results,
+                           selected_market=market)
 
 
 @app.route('/')
