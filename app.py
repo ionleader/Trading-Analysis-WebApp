@@ -111,7 +111,7 @@ def validate_trade_entry(exit_value, stop_loss, most_adverse, unrealized_profit)
         unrealized_profit = int(unrealized_profit)
 
         # Check the constraints
-        if exit_value < 0 or stop_loss >= 0 or most_adverse > 0 or unrealized_profit < 0:
+        if stop_loss >= 0 or most_adverse > 0 or unrealized_profit < 0:
             return False
     except (ValueError, TypeError):
         return False
