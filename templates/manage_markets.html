@@ -1,0 +1,75 @@
+<!-- New file: templates/manage_markets.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <title>Manage Markets</title>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center">Manage Markets</h1>
+
+        <!-- Add Market Form -->
+        <div class="row mb-4">
+            <div class="col-md-6 offset-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Add New Market</h5>
+                        <form action="{{ url_for('add_market') }}" method="POST" class="form-inline justify-content-center">
+                            <input type="text" class="form-control mr-2" name="market_name" placeholder="Market Name" required>
+                            <button type="submit" class="btn btn-primary">Add Market</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="alert alert-info">
+                    {% for message in messages %}
+                        {{ message }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Markets List -->
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Market Name</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for market in markets %}
+                            <tr>
+                                <td>{{ market.name }}</td>
+                                <td>
+                                    <form action="{{ url_for('delete_market', market_id=market.id) }}" method="POST" style="display:inline;">
+                                        <button type="submit" class="btn btn-danger btn-sm"
+                                                onclick="return confirm('Are you sure you want to delete this market?');">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="text-center mt-3">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to Main Page</a>
+        </div>
+    </div>
+</body>
+</html>

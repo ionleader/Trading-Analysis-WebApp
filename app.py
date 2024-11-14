@@ -59,37 +59,73 @@ def trade_entry():
         stop_loss = request.form.get('stop_loss')
         most_adverse = request.form.get('most_adverse')
         unrealized_profit = request.form.get('unrealized_profit')
+        market = request.form.get('market')
 
-        market = request.form.get('market')  # Neues Feld für den Markt
+        # Validate market exists in database
+        with get_db() as conn:
+            cursor = conn.execute('SELECT COUNT(*) FROM markets WHERE name = ?', (market,))
+            if cursor.fetchone()[0] == 0:
+                flash("Selected market does not exist in the database.")
+                return redirect(url_for('trade_entry'))
 
-        # Optional: Validierung für das Feld "market"
-        if not market:
-            flash("Market is required.")
+        # Validate all required fields are present
+        if not all([name, exit_value, stop_loss, most_adverse, unrealized_profit, market]):
+            flash("All fields are required!")
             return redirect(url_for('trade_entry'))
-
 
         # Validate inputs
         if not validate_trade_entry(exit_value, stop_loss, most_adverse, unrealized_profit) or not name:
             flash("Invalid input values! Please ensure all fields are filled out correctly.")
-            return redirect(url_for('trade_entry'))     #wenn nutzer speichern klickt wírd GET Request ausgelöst unse Seite erneut geladen, so dass Formular nicht doppelt gespeichert
+            return redirect(url_for('trade_entry'))
 
-        # Logic to save the trade entry to the database
-        save_trade_to_db({
-            'name': name,
-            'entry': 0,  # Entry is set to 0
-            'exit': exit_value,
-            'stop_loss': stop_loss,
-            'most_adverse': most_adverse,
-            'unrealized_profit': unrealized_profit,
-            'market': market,
-        })
+        try:
+            # Logic to save the trade entry to the database
+            save_trade_to_db({
+                'name': name,
+                'entry': 0,  # Entry is set to 0
+                'exit': exit_value,
+                'stop_loss': stop_loss,
+                'most_adverse': most_adverse,
+                'unrealized_profit': unrealized_profit,
+                'market': market,
+            })
+            flash("Trade entry recorded successfully!")
+        except sqlite3.Error as e:
+            flash(f"Database error occurred: {str(e)}")
+        except Exception as e:
+            flash(f"An error occurred: {str(e)}")
 
-        flash("Trade entry recorded successfully!")
         return redirect(url_for('trade_entry'))
 
-    trades = get_all_trades()
-    return render_template('index.html', trades=trades)
+    # For GET requests, fetch data needed for the page
+    try:
+        trades = get_all_trades()
+        markets = get_all_markets()
 
+        # If there are no markets, flash a warning
+        if not markets:
+            flash("No markets available. Please add markets first.")
+
+        best_strategy = None
+        performance_results = None
+
+        # Only calculate strategies if there are trades
+        if trades:
+            best_strategy, performance_results, pnl_curves = analyze_strategies(trades)
+
+        # Render template with all necessary data
+        return render_template('index.html',
+                               trades=trades,
+                               markets=markets,
+                               best_strategy=best_strategy,
+                               performance_results=performance_results)
+
+    except sqlite3.Error as e:
+        flash(f"Database error occurred: {str(e)}")
+        return render_template('index.html', trades=[], markets=[])
+    except Exception as e:
+        flash(f"An error occurred: {str(e)}")
+        return render_template('index.html', trades=[], markets=[])
 
 def save_trade_to_db(trade_data):
     """Save a trade entry to the SQLite database."""
@@ -257,54 +293,154 @@ def save_strategy_performance_to_db(best_strategy, performance_results):
 
 @app.route('/perform_action', methods=['POST'])
 def perform_action():
-    # Logic for the action (e.g., analyzing trades, running calculations, etc.)
-    # For example, you could call a function to analyze trade data:
-    trades = get_all_trades()  # Assuming you have a function to get all trades
-    best_strategy, performance_results, pnl_curves = analyze_strategies(trades)  # Your strategy analysis function
+    trades = get_all_trades()
+    markets = get_all_markets()  # Add this line
 
-    # Optionally, you can save the performance results or log them
-    save_strategy_performance_to_db(best_strategy, performance_results)  # Example of saving results
+    best_strategy, performance_results, pnl_curves = analyze_strategies(trades)
+    save_strategy_performance_to_db(best_strategy, performance_results)
 
-    # Flash a message if you want to notify the user
     flash('Action performed successfully!')
 
-    # After performing the action, you can render the results or redirect
-    return redirect(url_for('index'))  # Redirect to the index page to display updated data
-
+    return render_template('index.html',
+                           trades=trades,
+                           markets=markets,  # Add this line
+                           best_strategy=best_strategy,
+                           performance_results=performance_results)
 
 @app.route('/select_market', methods=['POST'])
 def perform_action_selectmarket():
-    market = request.form.get('market')  # Get the selected market from the form
-    trades = get_all_trades()  # Fetch all trades
+    selected_market = request.form.get('market')
+    trades = get_all_trades()
+    markets = get_all_markets()  # Add this line
 
-    # If a specific market is selected (not "All Markets"), filter the trades
-    if market:
-        filtered_trades = [trade for trade in trades if trade['market'] == market]
+    if selected_market:
+        filtered_trades = [trade for trade in trades if trade['market'] == selected_market]
     else:
         filtered_trades = trades
 
-    best_strategy, performance_results, pnl_curves = analyze_strategies(
-        filtered_trades)  # Analyze strategies based on the filtered trades
+    best_strategy, performance_results, pnl_curves = analyze_strategies(filtered_trades)
 
-    # Pass all necessary variables to the template
     return render_template('index.html',
-                           trades=filtered_trades,  # Pass the filtered trades
-                           performance_results=performance_results,
-                           selected_market=market,
-                           best_strategy=best_strategy)  # Include best_strategy if you're using it in the template
+                         trades=filtered_trades,
+                         markets=markets,  # Add this line
+                         selected_market=selected_market,
+                         performance_results=performance_results,
+                         best_strategy=best_strategy)
+
+def debug_markets():
+    """Utility function to print all markets in the database"""
+    with get_db() as conn:
+        cursor = conn.execute('SELECT * FROM markets')
+        markets = cursor.fetchall()
+        print("Current markets in database:", [market['name'] for market in markets])
+        return markets
+
+
+
+#market management
+# Add this to your existing Flask application
+
+def create_markets_table():
+    """Create a table for storing markets."""
+    with get_db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS markets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            )
+        ''')
+    print("Markets table is ready or already exists.")
+
+
+# Add this after your other init functions
+create_markets_table()
+
+
+def get_all_markets():
+    """Retrieve all markets from the database."""
+    with get_db() as conn:
+        cursor = conn.execute('SELECT * FROM markets ORDER BY name')
+        return cursor.fetchall()
+
+
+def add_market_to_db(market_name):
+    """Add a new market to the database."""
+    try:
+        with get_db() as conn:
+            conn.execute('INSERT INTO markets (name) VALUES (?)', (market_name,))
+        return True, "Market added successfully!"
+    except sqlite3.IntegrityError:
+        return False, "Market already exists!"
+    except Exception as e:
+        return False, f"Error adding market: {str(e)}"
+
+
+def delete_market_from_db(market_id):
+    """Delete a market from the database."""
+    try:
+        with get_db() as conn:
+            # Check if market is being used in trades
+            cursor = conn.execute('SELECT COUNT(*) FROM trades WHERE market = (SELECT name FROM markets WHERE id = ?)',
+                                  (market_id,))
+            if cursor.fetchone()[0] > 0:
+                return False, "Cannot delete market that has associated trades!"
+
+            conn.execute('DELETE FROM markets WHERE id = ?', (market_id,))
+        return True, "Market deleted successfully!"
+    except Exception as e:
+        return False, f"Error deleting market: {str(e)}"
+
+
+@app.route('/manage_markets', methods=['GET'])
+def manage_markets():
+    markets = get_all_markets()
+    return render_template('manage_markets.html', markets=markets)
+
+
+# Update the manage_markets route to redirect to index after adding/deleting markets
+@app.route('/add_market', methods=['POST'])
+def add_market():
+    market_name = request.form.get('market_name')
+    if not market_name:
+        flash("Market name is required!")
+        return redirect(url_for('manage_markets'))
+
+    success, message = add_market_to_db(market_name)
+    flash(message)
+
+    # After adding market, redirect to the index page instead of manage_markets
+    if success:
+        return redirect(url_for('index'))
+    return redirect(url_for('manage_markets'))
+
+
+@app.route('/delete_market/<int:market_id>', methods=['POST'])
+def delete_market(market_id):
+    success, message = delete_market_from_db(market_id)
+    flash(message)
+
+    # After deleting market, redirect to the index page instead of manage_markets
+    if success:
+        return redirect(url_for('index'))
+    return redirect(url_for('manage_markets'))
 
 
 
 @app.route('/')
 def index():
-    trades = get_all_trades()  # Lädt alle Trades
+    trades = get_all_trades()
+    markets = get_all_markets()  # Add this line
 
-    best_strategy, performance_results, pnl_curves = analyze_strategies(trades)  # Analyze strategies
-    save_strategy_performance_to_db(best_strategy, performance_results)  # Save results to DB
-    print(f"Performance Results: {performance_results}")  # Log for debugging
+    best_strategy, performance_results, pnl_curves = analyze_strategies(trades)
+    save_strategy_performance_to_db(best_strategy, performance_results)
+    print(f"Performance Results: {performance_results}")
 
-    return render_template('index.html', trades=trades, best_strategy=best_strategy,
+    return render_template('index.html',
+                           trades=trades,
+                           markets=markets,  # Add this line
+                           best_strategy=best_strategy,
                            performance_results=performance_results)
+
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)

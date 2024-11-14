@@ -8,9 +8,12 @@
 </head>
 <body>
     <div class="container mt-4">
-        <h1 class="text-center">Strategy Performance Results</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Strategy Performance Results</h1>
+            <a href="{{ url_for('manage_markets') }}" class="btn btn-primary">Manage Markets</a>
+        </div>
 
-        <!-- New Market Filter Section -->
+        <!-- Market Filter Section -->
         <div class="row mb-4">
             <div class="col-md-6 offset-md-3">
                 <div class="card">
@@ -19,8 +22,11 @@
                         <form action="{{ url_for('perform_action_selectmarket') }}" method="POST" class="form-inline justify-content-center">
                             <select class="form-control mr-2" name="market" id="market-filter">
                                 <option value="">All Markets</option>
-                                <option value="Crude Oil" {% if selected_market == 'Crude Oil' %}selected{% endif %}>Crude Oil</option>
-                                <option value="NQ" {% if selected_market == 'NQ' %}selected{% endif %}>NQ</option>
+                                {% for market in markets %}
+                                    <option value="{{ market.name }}" {% if selected_market == market.name %}selected{% endif %}>
+                                        {{ market.name }}
+                                    </option>
+                                {% endfor %}
                             </select>
                             <button type="submit" class="btn btn-primary">Filter Results</button>
                         </form>
@@ -59,6 +65,11 @@
 
     <div class="container mt-5">
         <h1>Add Trade Entry</h1>
+        {% if not markets %}
+            <div class="alert alert-warning">
+                No markets available. Please <a href="{{ url_for('manage_markets') }}">add markets</a> before creating trades.
+            </div>
+        {% endif %}
         <form action="{{ url_for('trade_entry') }}" method="POST">
             <div class="form-group">
                 <label for="name">Trade Name:</label>
@@ -82,12 +93,17 @@
             </div>
             <div class="form-group">
                 <label for="market">Market:</label>
-                <select class="form-control" id="market" name="market" required>
-                    <option value="Crude Oil">Crude Oil</option>
-                    <option value="NQ">NQ</option>
+                <select class="form-control" id="market" name="market" required {% if not markets %}disabled{% endif %}>
+                    {% if markets %}
+                        {% for market in markets %}
+                            <option value="{{ market.name }}">{{ market.name }}</option>
+                        {% endfor %}
+                    {% else %}
+                        <option value="">No markets available</option>
+                    {% endif %}
                 </select>
             </div>
-            <button type="submit" class="btn btn-primary">Submit Trade</button>
+            <button type="submit" class="btn btn-primary" {% if not markets %}disabled{% endif %}>Submit Trade</button>
         </form>
     </div>
 
@@ -141,7 +157,7 @@
         </table>
     </div>
 
-    <div class="d-flex justify-content-center mt-3">
+    <div class="d-flex justify-content-center mt-3 mb-5">
         <form action="{{ url_for('perform_action') }}" method="POST">
             <button type="submit" class="btn btn-primary btn-sm">Analyze All Markets</button>
         </form>
