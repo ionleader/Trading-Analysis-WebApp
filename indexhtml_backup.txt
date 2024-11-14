@@ -7,27 +7,9 @@
     <title>Trade Entry</title>
 </head>
 <body>
+
     <div class="container mt-4">
         <h1 class="text-center">Strategy Performance Results</h1>
-
-        <!-- New Market Filter Section -->
-        <div class="row mb-4">
-            <div class="col-md-6 offset-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Filter by Market</h5>
-                        <form action="{{ url_for('perform_action_selectmarket') }}" method="POST" class="form-inline justify-content-center">
-                            <select class="form-control mr-2" name="market" id="market-filter">
-                                <option value="">All Markets</option>
-                                <option value="Crude Oil" {% if selected_market == 'Crude Oil' %}selected{% endif %}>Crude Oil</option>
-                                <option value="NQ" {% if selected_market == 'NQ' %}selected{% endif %}>NQ</option>
-                            </select>
-                            <button type="submit" class="btn btn-primary">Filter Results</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         {% if performance_results %}
             <table class="table table-striped table-bordered">
@@ -55,7 +37,9 @@
         {% else %}
             <p>No strategy results available.</p>
         {% endif %}
+
     </div>
+
 
     <div class="container mt-5">
         <h1>Add Trade Entry</h1>
@@ -80,17 +64,26 @@
                 <label for="unrealized_profit">Unrealized Profit:</label>
                 <input type="number" class="form-control" id="unrealized_profit" name="unrealized_profit" required>
             </div>
+
             <div class="form-group">
                 <label for="market">Market:</label>
                 <select class="form-control" id="market" name="market" required>
                     <option value="Crude Oil">Crude Oil</option>
                     <option value="NQ">NQ</option>
-                </select>
+        <!-- Weitere Märkte hier hinzufügen_ -->
+                    </select>
             </div>
+
+
             <button type="submit" class="btn btn-primary">Submit Trade</button>
         </form>
-    </div>
 
+
+
+
+
+
+    </div>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <div class="container mt-3">
@@ -103,48 +96,52 @@
       {% endif %}
     {% endwith %}
 
-    <h1 class="text-center mt-5">Trade Records</h1>
-    <div class="d-flex justify-content-center">
-        <table class="table table-bordered table-striped w-auto">
-            <thead class="thead-dark">
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Entry</th>
-                    <th>Exit</th>
-                    <th>Stop Loss</th>
-                    <th>Most Adverse</th>
-                    <th>Unrealized Profit</th>
-                    <th>Market</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for trade in trades %}
-                    <tr>
-                        <td>{{ trade['id'] }}</td>
-                        <td>{{ trade['name'] }}</td>
-                        <td>{{ trade['entry'] }}</td>
-                        <td>{{ trade['exit'] }}</td>
-                        <td>{{ trade['stop_loss'] }}</td>
-                        <td>{{ trade['most_adverse'] }}</td>
-                        <td>{{ trade['unrealized_profit'] }}</td>
-                        <td>{{ trade['market'] }}</td>
-                        <td>
-                            <form action="{{ url_for('delete_trade', trade_id=trade.id) }}" method="POST" style="display:inline;">
-                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this trade?');">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
 
-    <div class="d-flex justify-content-center mt-3">
-        <form action="{{ url_for('perform_action') }}" method="POST">
-            <button type="submit" class="btn btn-primary btn-sm">Analyze All Markets</button>
-        </form>
+<h1 class="text-center mt-5">Trade Records</h1>
+        <div class="d-flex justify-content-center">
+            <table class="table table-bordered table-striped w-auto">
+                <thead class="thead-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>Stop Loss</th>
+                        <th>Most Adverse</th>
+                        <th>Unrealized Profit</th>
+                        <th>Market</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trade in trades %}
+                        <tr>
+                            <td>{{ trade['id'] }}</td>
+                            <td>{{ trade['name'] }}</td>
+                            <td>{{ trade['entry'] }}</td>
+                            <td>{{ trade['exit'] }}</td>
+                            <td>{{ trade['stop_loss'] }}</td>
+                            <td>{{ trade['most_adverse'] }}</td>
+                            <td>{{ trade['unrealized_profit'] }}</td>
+                            <td>{{ trade['market'] }}</td>
+                            <td>
+                                <form action="{{ url_for('delete_trade', trade_id=trade.id) }}" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this trade?');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+<!-- New Button for Action -->
+        <div class="d-flex justify-content-center mt-3">
+            <form action="{{ url_for('perform_action') }}" method="POST">
+                 <button type="submit" class="btn btn-primary btn-sm">Perform Action</button>
+            </form>
+        </div>
+
+
     </div>
 </body>
 </html>
