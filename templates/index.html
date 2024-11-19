@@ -35,6 +35,12 @@
             </div>
         </div>
 
+        {% if queried_trade_count is defined %}
+            <div class="alert alert-info mt-3" role="alert">
+                 Total Trades: <strong>{{ queried_trade_count }}</strong>
+            </div>
+        {% endif %}
+
         {% if performance_results %}
             <table class="table table-striped table-bordered">
                 <thead>
@@ -63,8 +69,6 @@
         {% endif %}
     </div>
 
-
-
     <!-- Add this section right after the existing performance_results table -->
     {% if actual_performance %}
         <div class="container mt-4">
@@ -86,7 +90,7 @@
                 </tbody>
             </table>
         </div>
-{% endif %}
+    {% endif %}
 
     <div class="container mt-5">
         <h1>Add Trade Entry</h1>
@@ -182,10 +186,63 @@
         </table>
     </div>
 
+    <div class="container mt-4">
+        <div class="card">
+            <div class="card-header">
+                <h3>Update Strategy Parameters</h3>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('update_strategy_params') }}" method="POST" id="strategyParamsForm">
+                    <div class="form-group">
+                        <label for="stop_loss_values">Stop Loss Values (comma-separated integers):</label>
+                        <input type="text"
+                               class="form-control"
+                               id="stop_loss_values"
+                               name="stop_loss_values"
+                               value="{{ STOP_LOSS_VALUES|join(',') }}"
+                               pattern="^-?\d+(?:\s*,\s*-?\d+)*$"
+                               required
+                               placeholder="-6,-8,-12">
+                        <small class="form-text text-muted">Enter integers separated by commas (e.g., -6,-8,-12)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="target_values">Target Values (comma-separated integers):</label>
+                        <input type="text"
+                               class="form-control"
+                               id="target_values"
+                               name="target_values"
+                               value="{{ TARGET_VALUES|join(',') }}"
+                               pattern="^-?\d+(?:\s*,\s*-?\d+)*$"
+                               required
+                               placeholder="10,16,20">
+                        <small class="form-text text-muted">Enter integers separated by commas (e.g., 10,16,20)</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update Parameters</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <div class="d-flex justify-content-center mt-3 mb-5">
         <form action="{{ url_for('perform_action') }}" method="POST">
             <button type="submit" class="btn btn-primary btn-sm">Analyze All Markets</button>
         </form>
+
     </div>
+
+    <script>
+    document.getElementById('strategyParamsForm').addEventListener('submit', function(event) {
+        const stopLossValues = document.getElementById('stop_loss_values').value;
+        const targetValues = document.getElementById('target_values').value;
+
+        // Validate that inputs are comma-separated integers
+        const integerPattern = /^-?\d+(?:\s*,\s*-?\d+)*$/;
+
+        if (!integerPattern.test(stopLossValues) || !integerPattern.test(targetValues)) {
+            event.preventDefault();
+            alert('Please enter valid comma-separated integers.');
+        }
+    });
+    </script>
 </body>
 </html>

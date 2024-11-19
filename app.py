@@ -25,6 +25,13 @@ def init_db():
             unrealized_profit INTEGER NOT NULL,
             market TEXT NOT NULL
         )''')
+        # Add this block to create the strategy_config table
+        conn.execute('''CREATE TABLE IF NOT EXISTS strategy_config (
+                id INTEGER PRIMARY KEY,
+                config_name TEXT UNIQUE,
+                "values" TEXT NOT NULL
+            )''')
+
     print("Database initialized.")
 
 def create_strategy_performance_table():
@@ -107,8 +114,8 @@ def analyze_strategies(trades, market=None):
     Analyze various stop loss and target combinations and actual trade performance.
     Returns the best strategy, performance results, and actual performance metrics.
     """
-    stop_loss_values = [-6, -8, -12]
-    target_values = [10, 16, 20]
+    stop_loss_values = STOP_LOSS_VALUES
+    target_values = TARGET_VALUES
 
     best_strategy = None
     best_performance = -np.inf
@@ -117,6 +124,8 @@ def analyze_strategies(trades, market=None):
     # Filter trades by market if specified
     if market:
         trades = [trade for trade in trades if trade['market'] == market]
+
+    queried_trade_count = len(trades)
 
     # Initialize actual performance metrics
     actual_performance = None
@@ -160,7 +169,7 @@ def analyze_strategies(trades, market=None):
                     'Profit Factor': actual_profit_factor
                 }
 
-    return best_strategy, performance_results, actual_performance
+    return best_strategy, performance_results, actual_performance, queried_trade_count
 
 def validate_trade_entry(exit_value, stop_loss, most_adverse, unrealized_profit):
     try:
@@ -259,7 +268,7 @@ def index():
     actual_performance = None
 
     if trades:
-        best_strategy, performance_results, actual_performance = analyze_strategies(trades)
+        best_strategy, performance_results, actual_performance, queried_trade_count = analyze_strategies(trades)
         save_strategy_performance_to_db(best_strategy, performance_results)
         print(f"Performance Results: {performance_results}")
 
@@ -268,7 +277,10 @@ def index():
                          markets=markets,
                          best_strategy=best_strategy,
                          performance_results=performance_results,
-                         actual_performance=actual_performance)
+                         actual_performance=actual_performance,
+                         STOP_LOSS_VALUES=STOP_LOSS_VALUES,
+                         TARGET_VALUES=TARGET_VALUES,
+                         queried_trade_count=queried_trade_count)
 
 @app.route('/trade_entry', methods=['GET', 'POST'])
 def trade_entry():
@@ -326,14 +338,44 @@ def trade_entry():
     actual_performance = None
 
     if trades:
-        best_strategy, performance_results, actual_performance = analyze_strategies(trades)
+        best_strategy, performance_results, actual_performance, queried_trade_count = analyze_strategies(trades)
 
     return render_template('index.html',
                          trades=trades,
                          markets=markets,
                          best_strategy=best_strategy,
                          performance_results=performance_results,
-                         actual_performance=actual_performance)
+                         actual_performance=actual_performance,
+                         queried_trade_count=queried_trade_count)
+
+
+
+def load_strategy_parameters():
+    """Load strategy parameters from the database."""
+    global STOP_LOSS_VALUES, TARGET_VALUES
+    with get_db() as conn:
+        stop_loss_cursor = conn.execute(
+            'SELECT "values" FROM strategy_config WHERE config_name = "stop_loss_values"'
+        )
+        target_cursor = conn.execute(
+            'SELECT "values" FROM strategy_config WHERE config_name = "target_values"'
+        )
+
+        stop_loss_result = stop_loss_cursor.fetchone()
+        target_result = target_cursor.fetchone()
+
+        # Set default values if not found in database
+        STOP_LOSS_VALUES = [
+            int(x) for x in (stop_loss_result[0].split(',') if stop_loss_result else [-6, -8, -12])
+        ]
+        TARGET_VALUES = [
+            int(x) for x in (target_result[0].split(',') if target_result else [10, 16, 20])
+        ]
+
+
+# Call this during app initialization
+load_strategy_parameters()
+
 
 @app.route('/delete_trade/<int:trade_id>', methods=['POST'])
 def delete_trade(trade_id):
@@ -346,7 +388,7 @@ def perform_action():
     trades = get_all_trades()
     markets = get_all_markets()
 
-    best_strategy, performance_results, actual_performance = analyze_strategies(trades)
+    best_strategy, performance_results, actual_performance, queried_trade_count = analyze_strategies(trades)
     save_strategy_performance_to_db(best_strategy, performance_results)
 
     flash('Action performed successfully!')
@@ -356,7 +398,8 @@ def perform_action():
                          markets=markets,
                          best_strategy=best_strategy,
                          performance_results=performance_results,
-                         actual_performance=actual_performance)
+                         actual_performance=actual_performance,
+                         queried_trade_count=queried_trade_count)
 
 @app.route('/select_market', methods=['POST'])
 def perform_action_selectmarket():
@@ -369,7 +412,7 @@ def perform_action_selectmarket():
     else:
         filtered_trades = trades
 
-    best_strategy, performance_results, actual_performance = analyze_strategies(filtered_trades)
+    best_strategy, performance_results, actual_performance, queried_trade_count = analyze_strategies(filtered_trades)
 
     return render_template('index.html',
                          trades=filtered_trades,
@@ -377,7 +420,8 @@ def perform_action_selectmarket():
                          selected_market=selected_market,
                          performance_results=performance_results,
                          best_strategy=best_strategy,
-                         actual_performance=actual_performance)
+                         actual_performance=actual_performance,
+                         queried_trade_count=queried_trade_count)
 
 @app.route('/manage_markets', methods=['GET'])
 def manage_markets():
@@ -406,6 +450,53 @@ def delete_market(market_id):
     if success:
         return redirect(url_for('index'))
     return redirect(url_for('manage_markets'))
+
+
+def update_strategy_parameters(stop_loss_values, target_values):
+    """
+    Update the stop loss and target values used in strategy analysis.
+
+    Args:
+        stop_loss_values (list): List of stop loss values to use in simulation
+        target_values (list): List of target values to use in simulation
+    """
+    global STOP_LOSS_VALUES, TARGET_VALUES
+
+    # Validate input
+    if not (isinstance(stop_loss_values, list) and isinstance(target_values, list)):
+        raise ValueError("Inputs must be lists of integers")
+
+    if not all(isinstance(x, int) for x in stop_loss_values + target_values):
+        raise ValueError("All values must be integers")
+
+    STOP_LOSS_VALUES = stop_loss_values
+    TARGET_VALUES = target_values
+
+    print(f"Updated stop loss values: {STOP_LOSS_VALUES}")
+    print(f"Updated target values: {TARGET_VALUES}")
+
+
+# Global variables to store strategy parameters
+STOP_LOSS_VALUES = [-6, -8, -12]
+TARGET_VALUES = [10, 16, 20]
+
+
+@app.route('/update_strategy_params', methods=['POST'])
+def update_strategy_params():
+    try:
+        # Parse comma-separated values from form
+        stop_loss_values = [int(x.strip()) for x in request.form.get('stop_loss_values').split(',')]
+        target_values = [int(x.strip()) for x in request.form.get('target_values').split(',')]
+
+        # Call the update function
+        update_strategy_parameters(stop_loss_values, target_values)
+
+        flash("Strategy parameters updated successfully!")
+        return redirect(url_for('index'))
+    except (ValueError, AttributeError) as e:
+        flash(f"Error updating parameters: Invalid input format")
+        return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)
