@@ -1,12 +1,49 @@
 from flask import Flask, render_template, request, flash, redirect, url_for, session
+from functools import wraps
 import sqlite3
-import numpy as np
+from werkzeug.security import generate_password_hash, check_password_hash
+import numpy as np  # Add this import for NumPy
+
+# Add these constants at the top of your file with your other imports
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin123"  # You should change this in production
+
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Set a secret key for session management
+app.secret_key = 'test'  # Set a secret key for session management
 
 # Database setup
 DATABASE = 'trades.db'
+
+
+def fix_users_table():
+    """Fix the users table structure and data"""
+    with sqlite3.connect('trades.db') as conn:
+        # Create temporary table with correct structure
+        conn.execute('''CREATE TABLE IF NOT EXISTS users_temp (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_admin BOOLEAN NOT NULL DEFAULT 0
+        )''')
+
+        try:
+            # Try to copy data from old table if it exists
+            conn.execute('''INSERT INTO users_temp (username, password_hash, is_admin)
+                          SELECT username, password, is_admin FROM users''')
+        except sqlite3.Error:
+            # If old table doesn't exist or has different structure,
+            # just create admin user in new table
+            password_hash = generate_password_hash('admin123')
+            conn.execute('''INSERT INTO users_temp (username, password_hash, is_admin)
+                          VALUES (?, ?, ?)''', ('admin', password_hash, True))
+
+        # Drop old table and rename new one
+        conn.execute('DROP TABLE IF EXISTS users')
+        conn.execute('ALTER TABLE users_temp RENAME TO users')
+        conn.commit()
+
+
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
@@ -15,6 +52,7 @@ def get_db():
 
 def init_db():
     with get_db() as conn:
+        # Create tables first
         conn.execute('''CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -24,13 +62,43 @@ def init_db():
             most_adverse INTEGER NOT NULL,
             unrealized_profit INTEGER NOT NULL,
             market TEXT NOT NULL
-        )''')
-        # Add this block to create the strategy_config table
+         )''')
+
         conn.execute('''CREATE TABLE IF NOT EXISTS strategy_config (
-                id INTEGER PRIMARY KEY,
-                config_name TEXT UNIQUE,
-                "values" TEXT NOT NULL
-            )''')
+            id INTEGER PRIMARY KEY,
+            config_name TEXT UNIQUE,
+            "values" TEXT NOT NULL
+        )''')
+
+        # Create users table with explicit column definitions
+        conn.execute('''CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_admin BOOLEAN NOT NULL DEFAULT 0
+        )''')
+
+        # Explicitly check for existing admin user
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', (DEFAULT_ADMIN_USERNAME,))
+        user_exists = cursor.fetchone()[0]
+
+        if not user_exists:
+            try:
+                password_hash = generate_password_hash(DEFAULT_ADMIN_PASSWORD)
+                cursor.execute('''INSERT INTO users (username, password_hash, is_admin)
+                                VALUES (?, ?, ?)''', (DEFAULT_ADMIN_USERNAME, password_hash, True))
+                conn.commit()
+                print("Default admin user created successfully.")
+            except sqlite3.Error as e:
+                    print(f"Error creating admin user: {e}")
+        else:
+            print("Admin user already exists.")
+
+    print("Database initialized.")
+
+
+
 
     print("Database initialized.")
 
@@ -62,8 +130,20 @@ def create_markets_table():
 
 # Initialize all tables
 init_db()
+fix_users_table()
 create_strategy_performance_table()
 create_markets_table()
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            flash('Please log in first.', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -71,18 +151,28 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            session['logged_in'] = True
-            flash('Login successful!', 'success')
-            return redirect(url_for('index'))
-        else:
+        with get_db() as conn:
+            cursor = conn.execute(
+                'SELECT password_hash FROM users WHERE username = ?',
+                (username,)
+            )
+            user = cursor.fetchone()
+
+            if user and check_password_hash(user['password_hash'], password):
+                session['logged_in'] = True
+                session['username'] = username
+                flash('Login successful!', 'success')
+                return redirect(url_for('index'))
+
             flash('Invalid username or password.', 'danger')
 
     return render_template('login.html')
 
+
+
 @app.route('/logout')
 def logout():
-    session.pop('logged_in', None)
+    session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
@@ -282,7 +372,10 @@ def save_strategy_performance_to_db(best_strategy, performance_results):
     print("Strategy performance saved to the database.")
 
 # Routes
+
 @app.route('/')
+
+@login_required
 def index():
     trades = get_all_trades()
     markets = get_all_markets()
