@@ -399,6 +399,8 @@ def index():
                          TARGET_VALUES=TARGET_VALUES,
                          queried_trade_count=queried_trade_count)
 
+
+@login_required
 @app.route('/trade_entry', methods=['GET', 'POST'])
 def trade_entry():
     if request.method == 'POST':
@@ -493,13 +495,14 @@ def load_strategy_parameters():
 # Call this during app initialization
 load_strategy_parameters()
 
-
+@login_required
 @app.route('/delete_trade/<int:trade_id>', methods=['POST'])
 def delete_trade(trade_id):
     delete_trade_from_db(trade_id)
     flash("Trade was successfully deleted!")
     return redirect(url_for('index'))
 
+@login_required
 @app.route('/perform_action', methods=['POST'])
 def perform_action():
     trades = get_all_trades()
@@ -518,6 +521,7 @@ def perform_action():
                          actual_performance=actual_performance,
                          queried_trade_count=queried_trade_count)
 
+@login_required
 @app.route('/select_market', methods=['POST'])
 def perform_action_selectmarket():
     selected_market = request.form.get('market')
@@ -540,11 +544,14 @@ def perform_action_selectmarket():
                          actual_performance=actual_performance,
                          queried_trade_count=queried_trade_count)
 
+
 @app.route('/manage_markets', methods=['GET'])
+@login_required
 def manage_markets():
     markets = get_all_markets()
     return render_template('manage_markets.html', markets=markets)
 
+@login_required
 @app.route('/add_market', methods=['POST'])
 def add_market():
     market_name = request.form.get('market_name')
@@ -559,6 +566,7 @@ def add_market():
         return redirect(url_for('index'))
     return redirect(url_for('manage_markets'))
 
+@login_required
 @app.route('/delete_market/<int:market_id>', methods=['POST'])
 def delete_market(market_id):
     success, message = delete_market_from_db(market_id)
@@ -597,7 +605,7 @@ def update_strategy_parameters(stop_loss_values, target_values):
 STOP_LOSS_VALUES = [-6, -8, -12]
 TARGET_VALUES = [10, 16, 20]
 
-
+@login_required
 @app.route('/update_strategy_params', methods=['POST'])
 def update_strategy_params():
     try:
